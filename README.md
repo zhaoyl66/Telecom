@@ -17,7 +17,7 @@ tqdm
 Our own dataset for segmentation is under ./data directory
 
 # Train
-
+We have two models in our system that generate embeddings. One model utilizes BERT to obtain the embedding vectors, while the other model employs the Baichaun large model for generating embeddings. Here are the running procedures for each model:
 ```
 usage: train.py [-h] [--lr LR] [--data DATA] [--batch BATCH] [--early-stop EARLY_STOP] [--device DEVICE] --name NAME [--update UPDATE] [--model MODEL] [--wandb] [--arch ARCH] [--layer LAYER] [--graph GRAPH] [--prompt-loss] [--low-res] [--seed SEED] [--max_seq_length MAX_SEQUENCE_LENGTH] [--max_segment_num MAX_SEGMENT_NUMBER]
 
@@ -36,3 +36,8 @@ optional arguments:
   --command                 define the name of the running process
   --max_segment_num         The maximum total dialogue segment number.
 ```
+
+1) bert-base-chinese model, the main training python document is train.py, the corresponding bash file is named run_bert.sh.
+
+
+2) bert-base-chinese model, the main training python document is train_baichuan.py, the corresponding bash file is named run_baichuan.sh.

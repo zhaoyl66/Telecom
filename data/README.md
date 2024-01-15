@@ -20,10 +20,11 @@ The dataset includes dialogue texts and hierarchical responsibility labels.
 [CLS]first turn[EOS]second turn[EOS]……[EOS]last turn[SEP]
 Due to the inclusion of personal information in the dialogue content, the dialogue texts are encrypted and processed using the BERT-base-Chinese model for embedding, followed by dimensionality reduction. 
 2) The hierarchical responsibility labels are encrypted, with different numbers representing different categories of labels. The hierarchical structure of the labels is preserved in the 'slot.pt' file. The dictionary values for the labels are stored in the 'value_dict.pt' file. As a precaution against data leakage, the specific names of responsibility categories are not included in the publicly available files.
-'''
+
+```
 slot.pt: {0: {17, 26, 28, 29, ……},17: {170, 268, 269, 270, ……},1: {64, 65, 66, 67, ……}, ……}
 value_dict: {0: '', 1: '', 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', ……}
-'''
+```
 |                          |     Train     |       Val      |       Test      |
 | ------------------------ | ------------- | -------------- | --------------- |
 | Dialogue-label pairs     |     9018      |      2270      |      2832       |

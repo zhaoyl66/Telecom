@@ -50,7 +50,6 @@ def parse():
                     help="The maximum total input sequence length after WordPiece tokenization. \n"
                          "Sequences longer than this will be truncated, and sequences shorter \n"
                          "than this will be padded.")
-    parser.add_argument("--cuda",type=str,default='3')
     parser.add_argument("--command",type=str,default='Telecom')
     return parser
 
@@ -75,14 +74,12 @@ class Save:
 if __name__ == '__main__':
     parser = parse()
     args = parser.parse_args()
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
     setproctitle(args.command)
     if args.wandb:
         wandb.init(config=args, project='HPT')
     print(args)
     utils.seed_torch(args.seed)
     config = BertConfig.from_pretrained(r'/data/zyl2023/bert-base-chinese',local_files_only=True)
-    # print('config:',config)
     tokenizer = Tokenizer.from_pretrained(r'/data/zyl2023/bert-base-chinese',local_files_only=True)
     data_path = os.path.join('data', args.data)
     args.name = args.data + '-' + args.name
@@ -92,12 +89,12 @@ if __name__ == '__main__':
     label_dict = {i: v for i, v in label_dict.items()}
     print('label_dict:',label_dict)
     '''
-    label_dict: {0: 'CS', 1: 'Medical', 2: 'Civil', 3: 'ECE', 4: 'biochemistry', 5: 'MAE', 6: 'Symbolic computation', 7: "Alzheimer's Disease", 8: 'Green Building', 9: 'Electric motor', 10: "Parkinson's Disease", 11: 'Computer vision', 12: 'Molecular biology', 13: 'Fluid mechanics'}
+    label_dict: 
     '''
 
     slot2value = torch.load(os.path.join(data_path, 'slot.pt'))
     '''
-    slot2value:  {0: {11, 6}, 1: {10, 7}, 2: {8}, 3: {9}, 4: {12}, 5: {13}})
+    slot2value: 
     '''
     value2slot = {}
     num_class = 0
@@ -123,7 +120,6 @@ if __name__ == '__main__':
     
     depth_dict = {i: get_depth(i) for i in range(num_class)}
     max_depth = depth_dict[max(depth_dict, key=depth_dict.get)] + 1
-    print('max_depth: ',max_depth)
 
     def get_keys_by_value(d, value):
         keys = []
@@ -133,7 +129,6 @@ if __name__ == '__main__':
         return keys
 
     keys_with_value = get_keys_by_value(depth_dict, max_depth)
-    print("max depth keys:", keys_with_value)
     
     depth2label = {i: [a for a in depth_dict if depth_dict[a] == i] for i in range(max_depth)}
     
@@ -191,9 +186,9 @@ if __name__ == '__main__':
             
             dataset = dataset.map(lambda x: data_map_function(x, tokenizer), batched=True)
             dataset.save_to_disk(os.path.join(data_path, args.model))
-        dataset['train'].set_format('torch', columns=['seg_input_ids','seg_token_type_ids','seg_attention_mask','cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
-        dataset['dev'].set_format('torch', columns=['seg_input_ids','seg_token_type_ids','seg_attention_mask','cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
-        dataset['test'].set_format('torch', columns=['seg_input_ids','seg_token_type_ids','seg_attention_mask','cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
+        dataset['train'].set_format('torch', columns=['cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
+        dataset['dev'].set_format('torch', columns=['cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
+        dataset['test'].set_format('torch', columns=['cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
 
         from models.prompt4 import Prompt
 
@@ -222,13 +217,12 @@ if __name__ == '__main__':
     dev = DataLoader(dataset['dev'], batch_size=8, shuffle=False)
     model.to('cuda')
 
-    optimizer = Adam(model.parameters(), lr=args.lr)#model.parameters() print 参数是否更新了
+    optimizer = Adam(model.parameters(), lr=args.lr)
 
     save = Save(model, optimizer, None, args)
     best_score_macro = 0
     best_score_micro = 0
     early_stop_count = 0
-    # update_step = 0
     loss = 0
     if not os.path.exists(os.path.join('checkpoints', args.name)):
         os.mkdir(os.path.join('checkpoints', args.name))
@@ -245,8 +239,6 @@ if __name__ == '__main__':
                 output = model(**batch)
                 output['loss'].backward()
                 loss += output['loss'].item()
-                # update_step += 1
-                # if update_step % args.update == 0:
                 if args.wandb:
                     wandb.log({'loss': loss, })
                 p_bar.set_description(
@@ -318,11 +310,6 @@ if __name__ == '__main__':
                         for i, l in enumerate(ll):
                             if l == 1:
                                 gold[-1].append(i)
-        
-        with open('data/Telecom1/output.json', 'w') as file:
-            for label in model.labels:
-                file.write('{\"label\":'+str(label) + '}\n')
-
         scores = evaluate(pred, gold, label_dict)
         macro_f1 = scores['macro_f1']
         micro_f1 = scores['micro_f1']

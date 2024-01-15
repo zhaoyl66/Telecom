@@ -181,7 +181,6 @@ class Prompt(BertPreTrainedModel):
     def forward(
             self,
             seg_input_ids=None,
-            seg_token_type_ids=None,
             seg_attention_mask=None,
             cls_sep_pos=None,
             true_len=None,
@@ -245,114 +244,95 @@ class Prompt(BertPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        sequence_output = outputs[0]  
-        # prediction_scores = self.cls(sequence_output)       #CLS位置 分类scores 16 512 768
+        sequence_output = outputs[0]
 
-        #多轮对话
         self.utt_gru_acc.flatten_parameters()
         b, s = seg_input_ids.size()
         # b: batch_size 16
         # s: max_seq 350
         n = cls_sep_pos.size()[1] - 2
 
-        # sequence_output, pooled_output,hidden_states, attentions = self.bert(input_ids=seg_input_ids,
-        #                                                                     attention_mask=seg_attention_mask,
-        #                                                                     token_type_ids=seg_token_type_ids)
-
         _,_,d=sequence_output.size()
-        # b,max_seg_num,max_seq_len,dim
-        segment = torch.zeros(b,n,s, d).to(self.device)         #16 10 350 768
-        segment_mask = torch.zeros(b , n, s).to(self.device)    #16 10 350
-        segment_turnmask=torch.zeros(b , n).to(self.device)     #16 10
+        # batch_size,max_seg_num,max_seq_len,dim
+        segment = torch.zeros(b,n,s, d).to(self.device)
+        segment_mask = torch.zeros(b , n, s).to(self.device)
+        segment_turnmask=torch.zeros(b , n).to(self.device) 
 
         # b,max_seq_len,dim
-        response = torch.zeros(b, s, d).to(self.device)         #16 350 768
-        response_mask = torch.zeros(b , s).to(self.device)      #16 350
+        response = torch.zeros(b, s, d).to(self.device)
+        response_mask = torch.zeros(b , s).to(self.device)
 
         for bind,seq in enumerate(sequence_output):
             cls_seq_pos_temp=cls_sep_pos[bind][:true_len[bind]] 
-            # print('cls_seq_pos_temp',cls_seq_pos_temp)          #[0, 36, 48] cls_sep_pos去掉-1
             for posind,pos in enumerate(cls_seq_pos_temp):
                 if(posind==true_len[bind]-1):
                     break
-                m = cls_seq_pos_temp[posind + 1] - cls_seq_pos_temp[posind] - 1   #[cls][sep]间
+                m = cls_seq_pos_temp[posind + 1] - cls_seq_pos_temp[posind] - 1 
                 if(posind==true_len[bind]-2):                   #response
                     response[bind][0:m] = sequence_output[bind][cls_seq_pos_temp[posind] + 1:cls_seq_pos_temp[posind + 1]]
                     response_mask[bind][0:m]= 1
-                else:                                           #context segment
+                else:
                     segment[bind][posind][0:m]=\
                         sequence_output[bind][cls_seq_pos_temp[posind]+1:cls_seq_pos_temp[posind+1]]
                     segment_mask[bind][posind][0:m] =1
                     segment_turnmask[bind][posind]=1
         
         #Segment Weighting
-        select_seg_context = self.my_context_selector(segment,response,segment_turnmask) # 16 10 350 768
+        select_seg_context = self.my_context_selector(segment,response,segment_turnmask)
 
-
-        select_seg_context=select_seg_context.view(b*n,s,d)                     #16*10 350 768
-        segment_mask_seg = segment_mask.view(b * n, s)                          #16*10 350
+        select_seg_context=select_seg_context.view(b*n,s,d)
+        segment_mask_seg = segment_mask.view(b * n, s)
 
         res_sequence_output_seg= response.unsqueeze(dim=1).repeat(1, n, 1, 1)
-        response_mask_seg=response_mask.unsqueeze(dim=1).repeat(1, n, 1, 1)    #1 16*10 1 350
+        response_mask_seg=response_mask.unsqueeze(dim=1).repeat(1, n, 1, 1)
 
-        res_sequence_output_seg=res_sequence_output_seg.view(b*n,s,d)           #16*10 350 768
-        response_mask_seg = response_mask_seg.view(b * n, s)                    #16*10 350
+        res_sequence_output_seg=res_sequence_output_seg.view(b*n,s,d)
+        response_mask_seg = response_mask_seg.view(b * n, s)
         
         V_seg = self.MatchingNet(select_seg_context,segment_mask_seg,res_sequence_output_seg,response_mask_seg)
 
-        V_seg=V_seg.view(b, n, 2*d)         #16 10 1536
+        V_seg=V_seg.view(b, n, 2*d)
 
-        #segment 16 10 350 768  取最后一个topic segment 沿着topic segment维度进行平均
         V_key = self.MatchingNet(segment[:, -1:, :, :].mean(dim=1), segment_mask[:, -1:, :].mean(dim=1), response,response_mask)  # (bsz,2dim)
 
         H_seg, _ = self.utt_gru_acc(V_seg)
         H_key = self.key_trans(V_key)
 
-        L_seg = self.dropout(H_seg[:, -1, :])       # (bsz, rnn2_hidden)   16 1536
+        L_seg = self.dropout(H_seg[:, -1, :])       # (bsz, rnn2_hidden)
 
-        L_key = self.dropout(H_key)                 # (bsz, rnn2_hidden) 16 1536
-        L_seg_key = self.affine_out(torch.cat((L_seg, L_key), 1))     #16 768
-        L = torch.unsqueeze(L_seg_key,dim=1)                          #16 1 768
-        #sequence output 16 512 768
+        L_key = self.dropout(H_key)                 # (bsz, rnn2_hidden) 
+        L_seg_key = self.affine_out(torch.cat((L_seg, L_key), 1))
+        L = torch.unsqueeze(L_seg_key,dim=1) 
         sequence_output = torch.cat((sequence_output,L),1)
-        # print(sequence_output.size())
-        prediction_scores = self.cls(sequence_output)       #CLS位置 分类scores 
-        # print('prediction scores:',prediction_scores.size())
+        prediction_scores = self.cls(sequence_output)
         
         masked_lm_loss = None
 
         if labels is not None:
             
             loss_fct = CrossEntropyLoss()
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, prediction_scores.size(-1)),   #[16*512, 30597]
-                                      single_labels.view(-1))                                   #[16*512]
-            #只选择了 multiclass_pos对应位置为1的值 PRED位置
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, prediction_scores.size(-1)),
+                                      single_labels.view(-1))
+            #select PRED
             multiclass_logits = prediction_scores.masked_select(
                 multiclass_pos.unsqueeze(-1).expand(-1,-1, prediction_scores.size(-1))).view(-1,prediction_scores.size(-1))
-            # 16 512  ————> 16 512 30579  ————>  
-            # print('size :',multiclass_pos.unsqueeze(-1).expand(-1, -1, prediction_scores.size(-1)).size())      # 16 512 30579
-            # print('multiclass_logits:',multiclass_logits.size())                                                # 32 30579
             multiclass_logits = multiclass_logits[:,
-                                self.vocab_size:self.vocab_size + self.num_labels] + self.multiclass_bias      #32 num_labels
+                                self.vocab_size:self.vocab_size + self.num_labels] + self.multiclass_bias      #num_labels
             
             multiclass_loss = multilabel_categorical_crossentropy(labels.view(-1, self.num_labels), multiclass_logits)
 
-            masked_lm_loss += multiclass_loss
-            # masked_lm_loss = multiclass_loss  
+            masked_lm_loss += multiclass_loss  
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
             return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
         
-        #实例化 对模型训练输出结果的封装
-        ret = MaskedLMOutput(                      #MaskedLMOutput 是transformers用于掩码语言模型预测的输出类，包括logits、hidden_states、attentons
+        ret = MaskedLMOutput(
             loss=masked_lm_loss,                
             logits=prediction_scores,
-            # logits = multiclass_logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-        # print('ret:',type(ret))
         return ret
 
     def prepare_inputs_for_generation(self, input_ids, attention_mask=None, **model_kwargs):
@@ -370,9 +350,9 @@ class Prompt(BertPreTrainedModel):
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
     @torch.no_grad()
-    def generate(self, input_ids,attention_mask,token_type_ids,seg_input_ids, seg_token_type_ids, seg_attention_mask, cls_sep_pos, true_len, depth2label, **kwargs):
+    def generate(self, input_ids,attention_mask,token_type_ids, seg_token_type_ids, seg_attention_mask, cls_sep_pos, true_len, depth2label, **kwargs):
         # print('generate token_type_ids',token_type_ids)
-        outputs = self(input_ids=input_ids,attention_mask=attention_mask,token_type_ids=token_type_ids,seg_input_ids=seg_input_ids, seg_token_type_ids=seg_token_type_ids, seg_attention_mask=seg_attention_mask, cls_sep_pos=cls_sep_pos,true_len=true_len)               ##调用forward 没有labels所以未计算labels的损失函数
+        outputs = self(input_ids=input_ids,attention_mask=attention_mask,token_type_ids=token_type_ids, seg_token_type_ids=seg_token_type_ids, seg_attention_mask=seg_attention_mask, cls_sep_pos=cls_sep_pos,true_len=true_len)               ##调用forward 没有labels所以未计算labels的损失函数
         multiclass_pos = input_ids == (self.get_input_embeddings().size - 1)
         # print('multiclass_pos',multiclass_pos.unsqueeze(-1))  
         num = multiclass_pos.shape[0]
@@ -389,11 +369,8 @@ class Prompt(BertPreTrainedModel):
             predict_labels.append([])
             for i, score in enumerate(scores):
                 for l in depth2label[i]:
-                    # print(score)
                     if score[l] > 0:
                         predict_labels[-1].append(l)
-            # print('predict_labels:',predict_labels[-1])
-            # result = [self.label_dict[str(index)] for index in predict_labels[-1]]
             self.labels.append(predict_labels[-1])
 
         return predict_labels, prediction_scores
@@ -405,16 +382,6 @@ class Prompt(BertPreTrainedModel):
         :param segment turn mask: (bsz,max_utterances)
         :return: score:
         '''
-        # print("key.size():",key.size())
-        # print("context.size()",context.size())
-        '''
-        context size 20 10 350 768
-        key size 20 350 768
-        segment turn mask 20 10
-        W_word size 768 768 10
-        A size: 20 10 350 350
-        self.v max seg len
-        '''
         dk = torch.sqrt(torch.Tensor([self.config.hidden_size])).to(self.device)
         A = torch.tanh(torch.einsum("blrd,ddh,bud->blruh", context, self.W_word, key)/dk)
         A = torch.einsum("blruh,hp->blrup", A, self.v).squeeze(dim=-1)   # b x l x u x u
@@ -422,10 +389,8 @@ class Prompt(BertPreTrainedModel):
         a = torch.cat([A.max(dim=2)[0], A.max(dim=3)[0]], dim=-1) # b x l x 2u
         a=self.linear_word(a).squeeze(dim=-1)
         mask=(1.0 - segment_turnmask) * -10000.0
-        # print('mask:',mask.size(),mask)
         mask = Variable(mask, requires_grad=False)
-        s1 = torch.softmax(a+mask, dim=-1)  # b x l
-        # print('s1:',s1.size(),s1)
+        s1 = torch.softmax(a+mask, dim=-1)
         return s1
 
     def utterance_selector(self, key, context,segment_turnmask):
@@ -478,11 +443,6 @@ class Prompt(BertPreTrainedModel):
 def masked_softmax(vector, mask):
     mask = Variable(mask, requires_grad=False)
     result = torch.nn.functional.softmax(vector * mask, dim=-1)
-    # a=(vector*mask).view(-1)
-    # b=vector.view(-1)
-    # for i, j in zip(a, b):
-    #     if i != j:
-    #         print(i, j)
 
     result = result * mask
     result = result / (result.sum(dim=-1, keepdim=True) + 1e-13)

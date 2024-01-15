@@ -2,18 +2,18 @@ Multi-turn Dialogue Responsibility Assignment Dataset
 
 Multi-turn Dialogue Responsibility Assignment dataset is specifically designed for analyzing the process of assigning responsibility in multi-turn telecommunications complaint conversations.
 
-Data Source
+# Data Source
 These conversations are transcribed from spoken dialogues between customer service agents from Guangzhou Telecom Company and customers who have raised complaints about their telecommunications services. The dialogues in the dataset are conducted over the phone, typically following a customer's complaint in Chinese about telecommunications services. The customer service agents participating in these conversations are employees of Guangzhou Telecom Company, while the customers are individuals who have lodged complaints regarding their telecommunications services.
 
-Data Preprocessing
+# Data Preprocessing
 During the data preprocessing phase, we have implemented measures to protect the privacy of the users by encrypting personally identifiable information, such as phone numbers, to ensure that the data is anonymized and in compliance with privacy regulations. This approach is critical to safeguard the sensitive data of both the customers and the service agents involved in the conversations.
 
-Data Characteristics
+# Data Characteristics
 We present the Multi-turn Dialogue Responsibility Assignment dataset to facilitate the study of complaint responsibility assignment in multi-turn dialogues between telecommunication complaint users and customer service personnel. It differs from existing dialogue datasets in two aspects: 
 1) Hierarchical Responsibility Labels: Unlike many other dialogue datasets that may have flat or simple labels, this dataset provides a hierarchical structure for categorizing the complaints, ranging from general fee issues to specific problems such as incorrect value recharge; 
 2) Progressive Refinement of Labels: As the conversation between the customer service agent and the customer unfolds, the responsibility labels become progressively refined.
  
-Data Format
+# Data Format
 The telecommunication customer service multi-turn dialogue complaint responsibility dataset contains a total of 14,315 data entries, including training, development, and testing sets. 
 The dataset includes dialogue texts and hierarchical responsibility labels.
 1) The structure of dialogue data is as follows:

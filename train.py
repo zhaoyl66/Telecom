@@ -190,7 +190,7 @@ if __name__ == '__main__':
         dataset['dev'].set_format('torch', columns=['cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
         dataset['test'].set_format('torch', columns=['cls_sep_pos','true_len', 'labels','input_ids','attention_mask','token_type_ids'])
 
-        from models.prompt4 import Prompt
+        from models.prompt import Prompt
 
     else:
         raise NotImplementedError
